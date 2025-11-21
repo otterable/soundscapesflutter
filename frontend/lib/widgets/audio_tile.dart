@@ -1,266 +1,346 @@
 // lib/widgets/audio_tile.dart
 
+import 'dart:html' as html show window;
+
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/material.dart';
 
 import '../api_service.dart';
 
-// brand palette
+// brand palette (same as dashboard)
 const Color kNavy = Color(0xFF003056);
 const Color kNavySoft = Color(0xFF00213C);
 const Color kAccent = Color(0xFFFF5C00);
 const Color kDanger = Color(0xFF9A031E);
 const Color kFieldBorder = Color(0xFF1E3C57);
 const Color kOk = Color(0xFF1C5434);
+const Color kRulesBeige = Color(0xFFF5E9DA);
 
-/// global controller so only one soundscape plays at a time
 class GlobalAudioController extends ChangeNotifier {
   static final GlobalAudioController _instance =
       GlobalAudioController._internal();
+
   factory GlobalAudioController() => _instance;
 
   GlobalAudioController._internal() {
-    _player = AudioPlayer();
-    _player.setReleaseMode(ReleaseMode.stop);
-
-    _player.onPlayerStateChanged.listen((state) {
-      _isPlaying = state == PlayerState.playing;
-      if (state == PlayerState.stopped) {
-        _position = Duration.zero;
-      }
-      notifyListeners();
-    });
-
-    _player.onDurationChanged.listen((d) {
-      _duration = d;
-      notifyListeners();
-    });
-
-    _player.onPositionChanged.listen((p) {
-      _position = p;
-      notifyListeners();
-    });
-
-    _player.onPlayerComplete.listen((_) {
-      _isPlaying = false;
-      _position = Duration.zero;
-      notifyListeners();
-    });
+    _initPlayer();
   }
 
-  late final AudioPlayer _player;
-
-  SoundFile? _currentFile;
+  final AudioPlayer _player = AudioPlayer();
+  String? _currentUrl;
   bool _isPlaying = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
 
-  SoundFile? get currentFile => _currentFile;
+  String? get currentUrl => _currentUrl;
   bool get isPlaying => _isPlaying;
   Duration get position => _position;
   Duration get duration => _duration;
 
-  bool isCurrent(SoundFile file) => _currentFile?.url == file.url;
+  Future<void> _initPlayer() async {
+    try {
+      await _player.setReleaseMode(ReleaseMode.stop);
 
-  Future<void> toggle(SoundFile file) async {
-    // same file: toggle pause/resume
-    if (isCurrent(file)) {
-      if (_isPlaying) {
-        await _player.pause();
-      } else {
-        // if we never really started (duration still zero), start fresh
-        if (_duration == Duration.zero && _position == Duration.zero) {
-          await _player.play(
-            UrlSource(file.url),
-            mode: PlayerMode.mediaPlayer,
-          );
-        } else {
-          await _player.resume();
+      _player.onPlayerStateChanged.listen((PlayerState state) {
+        final playingNow = state == PlayerState.playing;
+        if (_isPlaying != playingNow) {
+          _isPlaying = playingNow;
+          notifyListeners();
+        }
+      });
+
+      _player.onDurationChanged.listen((d) {
+        if (d.inMilliseconds <= 0) return;
+        _duration = d;
+        notifyListeners();
+      });
+
+      _player.onPositionChanged.listen((p) {
+        _position = p;
+        notifyListeners();
+      });
+
+      _player.onPlayerComplete.listen((_) {
+        _position = _duration;
+        _isPlaying = false;
+        notifyListeners();
+      });
+      // audioplayers ^6.0.0 no longer exposes onPlayerError,
+      // so we just rely on try/catch around play/pause/seek.
+    } catch (e) {
+      debugPrint('[GlobalAudioController] init error: $e');
+    }
+  }
+
+  bool isCurrent(String url) => _currentUrl == url;
+
+  String _normalizeUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+
+      if (kIsWeb) {
+        // If backend returns a relative path, prepend the current origin.
+        if (!uri.hasScheme) {
+          final origin = html.window.location.origin;
+          if (url.startsWith('/')) {
+            return origin + url;
+          }
+          return '$origin/$url';
+        }
+
+        // Avoid mixed-content errors: upgrade http -> https on the same host
+        // when the app itself runs on https.
+        if (uri.scheme == 'http' &&
+            html.window.location.protocol == 'https:' &&
+            uri.host == html.window.location.host) {
+          return uri.replace(scheme: 'https').toString();
         }
       }
-      return;
+
+      return url;
+    } catch (e) {
+      debugPrint('[GlobalAudioController] _normalizeUrl("$url") failed: $e');
+      return url;
+    }
+  }
+
+  Future<void> togglePlay(String url) async {
+    final normalizedUrl = _normalizeUrl(url);
+
+    // Same track: toggle pause / resume
+    if (_currentUrl == normalizedUrl) {
+      if (_isPlaying) {
+        try {
+          await _player.pause();
+        } catch (e) {
+          debugPrint('[GlobalAudioController] pause error: $e');
+        }
+        _isPlaying = false;
+        notifyListeners();
+        return;
+      } else {
+        try {
+          await _player.resume();
+        } catch (e) {
+          debugPrint('[GlobalAudioController] resume error: $e');
+        }
+        return;
+      }
     }
 
-    // new file: stop current and start this one from the beginning
+    // New track: stop previous and start the new one
     try {
       await _player.stop();
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[GlobalAudioController] stop error: $e');
+    }
 
-    _currentFile = file;
+    _currentUrl = normalizedUrl;
     _position = Duration.zero;
     _duration = Duration.zero;
     notifyListeners();
 
-    await _player.play(
-      UrlSource(file.url),
-      mode: PlayerMode.mediaPlayer,
-    );
+    try {
+      await _player.play(
+        UrlSource(normalizedUrl),
+        mode: PlayerMode.mediaPlayer,
+      );
+    } catch (e) {
+      debugPrint('[GlobalAudioController] play error for "$normalizedUrl": $e');
+      _isPlaying = false;
+      notifyListeners();
+    }
   }
 
-  Future<void> seek(Duration d) async {
+  Future<void> seek(double ratio) async {
+    if (_duration.inMilliseconds <= 0) return;
+    final int targetMillis =
+        (ratio.clamp(0.0, 1.0) * _duration.inMilliseconds).round();
+    final target = Duration(milliseconds: targetMillis);
     try {
-      await _player.seek(d);
-    } catch (_) {}
+      await _player.seek(target);
+    } catch (e) {
+      debugPrint('[GlobalAudioController] seek error: $e');
+    }
   }
 }
 
-class AudioTile extends StatelessWidget {
+class AudioTile extends StatefulWidget {
   final SoundFile file;
-  const AudioTile({super.key, required this.file});
 
-  String _fmt(Duration d) {
-    final mm = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final ss = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    final hh = d.inHours;
-    if (hh > 0) {
-      return "${hh.toString().padLeft(2, '0')}:$mm:$ss";
-    }
-    return "$mm:$ss";
+  const AudioTile({
+    super.key,
+    required this.file,
+  });
+
+  @override
+  State<AudioTile> createState() => _AudioTileState();
+}
+
+class _AudioTileState extends State<AudioTile> {
+  final GlobalAudioController _controller = GlobalAudioController();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_onControllerChanged);
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_onControllerChanged);
+    super.dispose();
+  }
+
+  void _onControllerChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  String _formatTime(Duration d) {
+    final totalSeconds = d.inSeconds;
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    final mm = minutes.toString().padLeft(2, '0');
+    final ss = seconds.toString().padLeft(2, '0');
+    return '$mm:$ss';
   }
 
   @override
   Widget build(BuildContext context) {
-    final controller = GlobalAudioController();
-    final title = file.name;
+    final isCurrent = _controller.isCurrent(widget.file.url);
+    final isPlaying = isCurrent && _controller.isPlaying;
 
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) {
-        final bool isCurrent = controller.isCurrent(file);
-        final bool isPlaying = isCurrent && controller.isPlaying;
+    final Duration duration =
+        isCurrent && _controller.duration.inMilliseconds > 0
+            ? _controller.duration
+            : Duration.zero;
 
-        final Duration pos = isCurrent ? controller.position : Duration.zero;
-        final Duration dur = isCurrent ? controller.duration : Duration.zero;
+    final Duration position =
+        isCurrent && _controller.position <= duration
+            ? _controller.position
+            : Duration.zero;
 
-        final int maxMs = dur.inMilliseconds == 0 ? 1 : dur.inMilliseconds;
-        final double value =
-            pos.inMilliseconds.clamp(0, maxMs).toDouble();
+    final double sliderValue;
+    if (duration.inMilliseconds <= 0) {
+      sliderValue = 0.0;
+    } else {
+      sliderValue = (position.inMilliseconds / duration.inMilliseconds)
+          .clamp(0.0, 1.0);
+    }
 
-        return Card(
-          margin: EdgeInsets.zero,
-          color: kNavy.withOpacity(0.92),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-          elevation: 3,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            child: Column(
-              // fill the full tile height so the button can sit at the bottom
-              mainAxisSize: MainAxisSize.max,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+    final String posLabel = _formatTime(position);
+    final String durLabel =
+        duration.inMilliseconds > 0 ? _formatTime(duration) : '00:00';
+
+    return Card(
+      color: kNavySoft.withOpacity(0.95),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: kFieldBorder, width: 1),
+      ),
+      elevation: 3,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Title
+            Text(
+              widget.file.name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 4),
+
+            // Time labels row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // top content: title + slider + times
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // title
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-
-                      const SizedBox(height: 2),
-
-                      // progress bar
-                      SliderTheme(
-                        data: SliderTheme.of(context).copyWith(
-                          trackHeight: 2.0,
-                          thumbShape: const RoundSliderThumbShape(
-                            enabledThumbRadius: 5,
-                          ),
-                          overlayShape: const RoundSliderOverlayShape(
-                            overlayRadius: 10,
-                          ),
-                        ),
-                        child: Slider(
-                          value: value,
-                          min: 0,
-                          max: maxMs.toDouble(),
-                          activeColor: kAccent,
-                          inactiveColor: Colors.white24,
-                          onChanged: isCurrent
-                              ? (v) => controller.seek(
-                                    Duration(milliseconds: v.round()),
-                                  )
-                              : null,
-                        ),
-                      ),
-
-                      const SizedBox(height: 2),
-
-                      // time labels
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            _fmt(pos),
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Colors.white70,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          Text(
-                            _fmt(dur),
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Colors.white70,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                Text(
+                  posLabel,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 11,
                   ),
                 ),
-
-                // tiny gap between content and button
-                const SizedBox(height: 3),
-
-                // play / pause button, now anchored to the bottom of the tile
-                SizedBox(
-                  height: 26,
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isPlaying ? kDanger : kOk,
-                      shape: const StadiumBorder(),
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 1,
-                        horizontal: 6,
-                      ),
-                    ),
-                    icon: Icon(
-                      isPlaying ? Icons.pause : Icons.play_arrow,
-                      color: Colors.white,
-                      size: 18,
-                    ),
-                    label: Text(
-                      isPlaying ? "Pause" : "Play",
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                    onPressed: () => controller.toggle(file),
+                Text(
+                  durLabel,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 11,
                   ),
                 ),
               ],
             ),
-          ),
-        );
-      },
+            const SizedBox(height: 4),
+
+            // Progress bar
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 3.0,
+                thumbShape:
+                    const RoundSliderThumbShape(enabledThumbRadius: 7),
+                overlayShape:
+                    const RoundSliderOverlayShape(overlayRadius: 12),
+                activeTrackColor: kAccent,
+                inactiveTrackColor: Colors.white24,
+                thumbColor: kAccent,
+                overlayColor: kAccent.withOpacity(0.2),
+              ),
+              child: Slider(
+                value: sliderValue,
+                min: 0.0,
+                max: 1.0,
+                onChanged: (value) {
+                  if (!isCurrent) return;
+                  _controller.seek(value);
+                },
+              ),
+            ),
+
+            const SizedBox(height: 4),
+
+            // Play / stop button
+            SizedBox(
+              height: 30,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  _controller.togglePlay(widget.file.url);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isPlaying ? kDanger : kAccent,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  elevation: 1,
+                ),
+                icon: Icon(
+                  isPlaying ? Icons.stop : Icons.play_arrow,
+                  size: 16,
+                ),
+                label: Text(
+                  isPlaying ? 'Stop' : 'Play',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
