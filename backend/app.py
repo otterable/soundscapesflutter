@@ -114,7 +114,6 @@ def _base_url() -> str:
     return f"{req_scheme}://{host}"
 
 def _url_for_file(category: str, filename: str) -> str:
-    # URL-encode pieces for safety (spaces, UTF-8, etc.)
     return f"{_base_url()}/static/soundscapes/{quote(category)}/{quote(filename)}"
 
 def _ensure_category_dir(cat: str) -> str:
@@ -139,10 +138,8 @@ def _log_connect():
 
 @app.after_request
 def _nocache(resp):
-    # prevent stale dev caches
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     resp.headers["Pragma"] = "no-cache"
-    # Make streaming friendlier for audio across origins
     resp.headers.setdefault("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges")
     if request.path.startswith("/static/"):
         resp.headers.setdefault("Accept-Ranges", "bytes")
@@ -200,7 +197,6 @@ def api_soundscapes():
 
 @app.route("/static/<path:filename>")
 def static_file(filename):
-    # conditional=True enables Range requests (partial content) in Werkzeug
     return send_from_directory(app.static_folder, filename, conditional=True)
 
 # ---- Admin Auth (Twilio OTP) ----
@@ -338,6 +334,28 @@ def delete_category():
         os.rmdir(path)
         logger.info("CATEGORY DELETE | %s", name)
     return jsonify({"ok": True})
+
+@app.route("/api/admin/categories", methods=["GET"])
+def admin_categories():
+    _require_admin()
+    base = _soundscapes_root()
+    categories = []
+    total_files = 0
+    if os.path.isdir(base):
+        for folder in sorted(os.listdir(base)):
+            cat_path = os.path.join(base, folder)
+            if os.path.isdir(cat_path):
+                file_count = 0
+                for f in os.listdir(cat_path):
+                    if _is_audio(f):
+                        file_count += 1
+                total_files += file_count
+                categories.append({
+                    "name": folder,
+                    "file_count": file_count
+                })
+    logger.info("ADMIN CATEGORIES | cats=%d | files=%d", len(categories), total_files)
+    return jsonify({"ok": True, "categories": categories})
 
 # ---- Admin: Files ----
 @app.route("/api/admin/upload", methods=["POST"])

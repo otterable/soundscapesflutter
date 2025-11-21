@@ -26,7 +26,8 @@ class SoundCategory {
     final filesJson = (json['files'] as List<dynamic>? ?? []);
     return SoundCategory(
       name: json['name'] as String,
-      files: filesJson.map((e) => SoundFile.fromJson(e as Map<String, dynamic>)).toList(),
+      files:
+          filesJson.map((e) => SoundFile.fromJson(e as Map<String, dynamic>)).toList(),
     );
   }
 }
@@ -60,6 +61,14 @@ class ApiService {
     return "$_base$p";
   }
 
+  /// Build the URL for an audio file in a given category.
+  /// Used so the admin UI can update URLs instantly after renames/moves.
+  String buildFileUrl(String category, String filename) {
+    final cat = Uri.encodeComponent(category);
+    final file = Uri.encodeComponent(filename);
+    return "$_base/static/soundscapes/$cat/$file";
+  }
+
   void setAuthToken(String? token) {
     _token = token;
   }
@@ -80,6 +89,7 @@ class ApiService {
   }
 
   // ---------- Public endpoints ----------
+
   Future<List<SoundCategory>> fetchCategories() async {
     final res = await http.get(_uri("/api/soundscapes"));
     if (res.statusCode != 200) {
@@ -87,7 +97,9 @@ class ApiService {
     }
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     final cats = (data['categories'] as List<dynamic>? ?? []);
-    return cats.map((e) => SoundCategory.fromJson(e as Map<String, dynamic>)).toList();
+    return cats
+        .map((e) => SoundCategory.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<List<SoundFile>> fetchAllFiles() async {
@@ -100,6 +112,7 @@ class ApiService {
   }
 
   // ---------- Admin: OTP Auth ----------
+
   Future<void> adminLoginStart(String phone) async {
     final res = await http.post(
       _uri("/api/admin/login_start"),
@@ -130,6 +143,7 @@ class ApiService {
   }
 
   // ---------- Admin: Categories ----------
+
   Future<void> createCategory(String name) async {
     final res = await http.post(
       _uri("/api/admin/create_category"),
@@ -164,6 +178,7 @@ class ApiService {
   }
 
   // ---------- Admin: Files ----------
+
   Future<void> uploadFile({
     required String category,
     required String filename,
@@ -192,7 +207,11 @@ class ApiService {
     final res = await http.post(
       _uri("/api/admin/rename_file"),
       headers: _authHeaders(),
-      body: jsonEncode({'category': category, 'old_name': oldName, 'new_name': newName}),
+      body: jsonEncode({
+        'category': category,
+        'old_name': oldName,
+        'new_name': newName,
+      }),
     );
     if (res.statusCode != 200) {
       throw Exception("Rename file failed: ${res.body}");
@@ -207,7 +226,11 @@ class ApiService {
     final res = await http.post(
       _uri("/api/admin/move_file"),
       headers: _authHeaders(),
-      body: jsonEncode({'old_category': oldCategory, 'filename': filename, 'new_category': newCategory}),
+      body: jsonEncode({
+        'old_category': oldCategory,
+        'filename': filename,
+        'new_category': newCategory,
+      }),
     );
     if (res.statusCode != 200) {
       throw Exception("Move file failed: ${res.body}");

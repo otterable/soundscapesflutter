@@ -1,6 +1,20 @@
+// lib/screens/admin_login_screen.dart
+
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../api_service.dart';
+
+// brand palette
+const Color kNavy = Color(0xFF003056);
+const Color kNavySoft = Color(0xFF00213C);
+const Color kAccent = Color(0xFFFF5C00);
+const Color kDanger = Color(0xFF9A031E);
+const Color kFieldBorder = Color(0xFF1E3C57);
+const Color kOk = Color(0xFF1C5434);
+const Color kRulesBeige = Color(0xFFF5E9DA);
+const Color kErrorVivid = Color(0xFFEF233C);
 
 class AdminLoginScreen extends StatefulWidget {
   final ApiService api;
@@ -11,8 +25,9 @@ class AdminLoginScreen extends StatefulWidget {
 }
 
 class _AdminLoginScreenState extends State<AdminLoginScreen> {
-  final TextEditingController _phone = TextEditingController(text: "+436703596614");
+  final TextEditingController _phone = TextEditingController(text: "");
   final TextEditingController _code = TextEditingController();
+
   bool _sending = false;
   bool _verifying = false;
   bool _stepCode = false;
@@ -21,7 +36,6 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   @override
   void initState() {
     super.initState();
-    // If already authenticated (token present), skip OTP screen.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (widget.api.isAuthed && mounted) {
         debugPrint("AdminLogin: already authed, redirecting to /admin");
@@ -82,33 +96,52 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   @override
   Widget build(BuildContext context) {
     final card = Card(
-      color: const Color(0xFF121212),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: kNavy.withOpacity(0.92),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      elevation: 4,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text("Admin Login (SMS OTP)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+              Row(
+                children: const [
+                  Icon(Icons.admin_panel_settings, color: Colors.white),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      "Admin login",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 12),
               TextField(
                 controller: _phone,
                 enabled: !_stepCode && !_sending,
+                style: const TextStyle(color: Colors.white),
                 decoration: const InputDecoration(
-                  labelText: "Admin phone (+E.164)",
-                  border: OutlineInputBorder(),
+                  labelText: "Login",
+                  prefixIcon: Icon(Icons.donut_large, color: Colors.white70),
                 ),
+                keyboardType: TextInputType.phone,
                 onSubmitted: (_) => _start(),
               ),
               const SizedBox(height: 12),
               if (_stepCode) ...[
                 TextField(
                   controller: _code,
+                  style: const TextStyle(color: Colors.white),
                   decoration: const InputDecoration(
                     labelText: "Code",
-                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.sms, color: Colors.white70),
                   ),
                   keyboardType: TextInputType.number,
                   onSubmitted: (_) => _verify(),
@@ -118,20 +151,37 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+                  child: Text(
+                    _error!,
+                    style: const TextStyle(
+                      color: kErrorVivid,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               Row(
                 children: [
                   Expanded(
-                    child: FilledButton(
+                    child: ElevatedButton.icon(
                       onPressed: _stepCode ? _verify : _start,
-                      child: _stepCode
+                      icon: _stepCode
+                          ? const Icon(Icons.lock_open, color: Colors.white)
+                          : const Icon(Icons.send, color: Colors.white),
+                      label: _stepCode
                           ? (_verifying
-                              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
                               : const Text("Verify"))
                           : (_sending
-                              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                              : const Text("Send Code")),
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Text("Login")),
                     ),
                   ),
                 ],
@@ -144,11 +194,26 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Admin Login"),
+        title: const Text("Admin login"),
         centerTitle: true,
-        backgroundColor: Colors.black,
+        backgroundColor: kNavy.withOpacity(0.95),
       ),
-      body: Center(child: card),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset(
+            'assets/molen.png',
+            fit: BoxFit.cover,
+          ),
+          Container(color: Colors.black.withOpacity(0.30)),
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: card,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -22,3 +22,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  assets:
+    - assets/fitna_icon_location_map_a1.png
+    - assets/fitna_icon_start_map_a1.png
+    - assets/fitna_icon_end_map_a1.png
+    - assets/molen.png
+    - assets/erminelogo.png
