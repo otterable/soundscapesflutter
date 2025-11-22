@@ -786,7 +786,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           fit: StackFit.expand,
           children: [
             Image.asset(
-              'assets/molen.png',
+              'assets/molen.jpg',
               fit: BoxFit.cover,
             ),
             Container(color: Colors.black.withOpacity(0.30)),
@@ -861,7 +861,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         fit: StackFit.expand,
         children: [
           Image.asset(
-            'assets/molen.png',
+            'assets/molen.jpg',
             fit: BoxFit.cover,
           ),
           Container(color: Colors.black.withOpacity(0.30)),
