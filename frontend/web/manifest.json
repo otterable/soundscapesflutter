@@ -1,7 +1,8 @@
 {
-  "name": "Ermine Soundscapes",
+  "name": "Soundscapes | Ermine.at",
   "short_name": "Soundscapes",
-  "start_url": ".",
+  "start_url": "/soundscapes/",
+  "scope": "/soundscapes/",
   "display": "standalone",
   "background_color": "#003056",
   "theme_color": "#003056",
@@ -10,25 +11,25 @@
   "prefer_related_applications": false,
   "icons": [
     {
-      "src": "assets/erminelogo.png",
+      "src": "assets/apple-touch-icon.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "assets/erminelogo.png",
+      "src": "assets/apple-touch-icon.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "assets/erminelogo.png",
+      "src": "assets/apple-touch-icon.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "assets/erminelogo.png",
+      "src": "assets/apple-touch-icon.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

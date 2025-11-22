@@ -1,5 +1,3 @@
-// lib/widgets/audio_grid.dart
-
 import 'package:flutter/material.dart';
 
 import '../api_service.dart';
@@ -26,9 +24,8 @@ class AudioGrid extends StatelessWidget {
     final double usableWidth = screenWidth - totalHorizontalPadding;
     final double tileWidth = usableWidth / cols;
 
-    // make tiles flatter:
-    // this is the *target* content height we design for
-    const double minTileHeight = 130.0;
+    // target content height we design for
+    const double minTileHeight = 145.0; // slightly taller to avoid overflow
 
     double ratio = tileWidth / minTileHeight; // width / height
 

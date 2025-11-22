@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
+
 import 'package:http/http.dart' as http;
 
 class SoundFile {
@@ -26,8 +27,9 @@ class SoundCategory {
     final filesJson = (json['files'] as List<dynamic>? ?? []);
     return SoundCategory(
       name: json['name'] as String,
-      files:
-          filesJson.map((e) => SoundFile.fromJson(e as Map<String, dynamic>)).toList(),
+      files: filesJson
+          .map((e) => SoundFile.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 }
@@ -48,7 +50,7 @@ class ApiService {
     if (s.isEmpty) return "";
     final lower = s.toLowerCase();
     if (!lower.startsWith("http://") && !lower.startsWith("https://")) {
-      // Default to HTTP here because your backend is HTTP-only (port 8083).
+      // Default scheme if none was given.
       s = "http://$s";
     }
     if (s.endsWith("/")) s = s.substring(0, s.length - 1);
@@ -88,6 +90,71 @@ class ApiService {
     return Uri.parse("$_base$p");
   }
 
+  /// Ensure every sound file URL is absolute, points to the backend host
+  /// and uses HTTPS for that host (to avoid mixed content on https pages).
+  String _normalizeFileUrl(String url) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return trimmed;
+
+    Uri? baseUri;
+    try {
+      baseUri = Uri.parse(_base);
+    } catch (_) {
+      baseUri = null;
+    }
+
+    try {
+      final uri = Uri.parse(trimmed);
+
+      // Absolute URL
+      if (uri.hasScheme) {
+        // Upgrade http->https when it points to the same backend host
+        if (baseUri != null &&
+            uri.scheme == 'http' &&
+            uri.host == baseUri.host) {
+          final scheme =
+              baseUri.scheme.isNotEmpty ? baseUri.scheme : 'https';
+          final port = baseUri.hasPort ? baseUri.port : null;
+          return uri
+              .replace(
+                scheme: scheme,
+                port: port,
+              )
+              .toString();
+        }
+        return uri.toString();
+      }
+
+      // Relative URL -> attach to backend base
+      if (baseUri == null ||
+          baseUri.scheme.isEmpty ||
+          baseUri.host.isEmpty) {
+        return trimmed;
+      }
+
+      final relativePath =
+          trimmed.startsWith('/') ? trimmed : '/$trimmed';
+
+      final String basePath;
+      if (baseUri.path.isEmpty || baseUri.path == '/') {
+        basePath = '';
+      } else {
+        basePath = baseUri.path.endsWith('/')
+            ? baseUri.path.substring(0, baseUri.path.length - 1)
+            : baseUri.path;
+      }
+
+      return Uri(
+        scheme: baseUri.scheme,
+        host: baseUri.host,
+        port: baseUri.hasPort ? baseUri.port : null,
+        path: '$basePath$relativePath',
+      ).toString();
+    } catch (_) {
+      return trimmed;
+    }
+  }
+
   // ---------- Public endpoints ----------
 
   Future<List<SoundCategory>> fetchCategories() async {
@@ -97,9 +164,29 @@ class ApiService {
     }
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     final cats = (data['categories'] as List<dynamic>? ?? []);
-    return cats
-        .map((e) => SoundCategory.fromJson(e as Map<String, dynamic>))
-        .toList();
+
+    final List<SoundCategory> categories = [];
+    for (final raw in cats) {
+      final catJson = raw as Map<String, dynamic>;
+      final baseCat = SoundCategory.fromJson(catJson);
+
+      final patchedFiles = baseCat.files
+          .map(
+            (f) => SoundFile(
+              name: f.name,
+              url: _normalizeFileUrl(f.url),
+            ),
+          )
+          .toList();
+
+      categories.add(
+        SoundCategory(
+          name: baseCat.name,
+          files: patchedFiles,
+        ),
+      );
+    }
+    return categories;
   }
 
   Future<List<SoundFile>> fetchAllFiles() async {
@@ -188,8 +275,7 @@ class ApiService {
     if (_token != null && _token!.isNotEmpty) {
       req.headers['Authorization'] = 'Bearer $_token';
     }
-    // IMPORTANT: pass a clean filename; browsers (and some pickers) can include weird params
-    // in display names. The server will still secure_filename() it, but we avoid surprises here.
+    // IMPORTANT: pass a clean filename.
     final clean = filename.trim().replaceAll(RegExp(r'[;\r\n]'), '_');
     req.fields['category'] = category;
     req.files.add(http.MultipartFile.fromBytes('file', bytes, filename: clean));

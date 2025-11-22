@@ -1,5 +1,3 @@
-// lib/main.dart
-
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -30,7 +28,9 @@ class Bootstrap extends StatefulWidget {
 }
 
 class _BootstrapState extends State<Bootstrap> {
-  final ApiService _api = ApiService(baseUrl: "http://soundscapes.ermine.at:8083");
+  // IMPORTANT: use HTTPS backend to avoid mixed-content on https://ermine.at/soundscapes
+  final ApiService _api = ApiService(baseUrl: "https://soundscapes.ermine.at");
+
   bool _ready = false;
 
   @override

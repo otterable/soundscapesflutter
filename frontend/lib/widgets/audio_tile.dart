@@ -1,5 +1,3 @@
-// lib/widgets/audio_tile.dart
-
 import 'dart:html' as html show window;
 
 import 'package:audioplayers/audioplayers.dart';
@@ -66,8 +64,6 @@ class GlobalAudioController extends ChangeNotifier {
         _isPlaying = false;
         notifyListeners();
       });
-      // audioplayers ^6.0.0 no longer exposes onPlayerError,
-      // so we just rely on try/catch around play/pause/seek.
     } catch (e) {
       debugPrint('[GlobalAudioController] init error: $e');
     }
@@ -147,7 +143,8 @@ class GlobalAudioController extends ChangeNotifier {
         mode: PlayerMode.mediaPlayer,
       );
     } catch (e) {
-      debugPrint('[GlobalAudioController] play error for "$normalizedUrl": $e');
+      debugPrint(
+          '[GlobalAudioController] play error for "$normalizedUrl": $e');
       _isPlaying = false;
       notifyListeners();
     }
@@ -242,97 +239,108 @@ class _AudioTileState extends State<AudioTile> {
       ),
       elevation: 3,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+        // a tiny bit more bottom padding so the button never clips
+        padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Title
-            Text(
-              widget.file.name,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-              ),
-            ),
-            const SizedBox(height: 4),
-
-            // Time labels row
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  posLabel,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 11,
+            // Top content (title + time labels + slider) expands as needed
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Title
+                  Text(
+                    widget.file.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
                   ),
-                ),
-                Text(
-                  durLabel,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 11,
+                  const SizedBox(height: 4),
+
+                  // Time labels row
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        posLabel,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                        ),
+                      ),
+                      Text(
+                        durLabel,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
+                  const SizedBox(height: 4),
 
-            // Progress bar
-            SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                trackHeight: 3.0,
-                thumbShape:
-                    const RoundSliderThumbShape(enabledThumbRadius: 7),
-                overlayShape:
-                    const RoundSliderOverlayShape(overlayRadius: 12),
-                activeTrackColor: kAccent,
-                inactiveTrackColor: Colors.white24,
-                thumbColor: kAccent,
-                overlayColor: kAccent.withOpacity(0.2),
+                  // Progress bar
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 3.0,
+                      thumbShape:
+                          const RoundSliderThumbShape(enabledThumbRadius: 7),
+                      overlayShape:
+                          const RoundSliderOverlayShape(overlayRadius: 12),
+                      activeTrackColor: kAccent,
+                      inactiveTrackColor: Colors.white24,
+                      thumbColor: kAccent,
+                      overlayColor: kAccent.withOpacity(0.2),
+                    ),
+                    child: Slider(
+                      value: sliderValue,
+                      min: 0.0,
+                      max: 1.0,
+                      onChanged: (value) {
+                        if (!isCurrent) return;
+                        _controller.seek(value);
+                      },
+                    ),
+                  ),
+                ],
               ),
-              child: Slider(
-                value: sliderValue,
-                min: 0.0,
-                max: 1.0,
-                onChanged: (value) {
-                  if (!isCurrent) return;
-                  _controller.seek(value);
-                },
-              ),
             ),
 
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
 
-            // Play / stop button
+            // Play / stop button – pill-shaped, thin, bottom-aligned
             SizedBox(
-              height: 30,
+              height: 26,
               child: ElevatedButton.icon(
                 onPressed: () {
                   _controller.togglePlay(widget.file.url);
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: isPlaying ? kDanger : kAccent,
+                  backgroundColor: isPlaying ? kDanger : kOk,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                  minimumSize: const Size(0, 26),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 0,
                   ),
+                  shape: const StadiumBorder(),
                   elevation: 1,
                 ),
                 icon: Icon(
                   isPlaying ? Icons.stop : Icons.play_arrow,
-                  size: 16,
+                  size: 15,
                 ),
                 label: Text(
                   isPlaying ? 'Stop' : 'Play',
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 13,
+                    fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
